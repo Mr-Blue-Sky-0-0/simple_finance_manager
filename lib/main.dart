@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:gap/gap.dart';
+import 'package:get/get.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 
 Future<void> main() async {
@@ -15,10 +17,10 @@ class MyApp extends StatelessWidget {
   // This widget is the root of your application.
   @override
   Widget build(BuildContext context) {
-    return MaterialApp(
+    return GetMaterialApp(
       title: 'Finance App',
       theme: ThemeData(
-        colorScheme: ColorScheme.fromSeed(seedColor: Colors.deepPurple),
+        colorScheme: ColorScheme.fromSeed(seedColor: Colors.blue),
         useMaterial3: true,
       ),
       home: const MyHomePage(),
@@ -46,7 +48,11 @@ class _MyHomePageState extends State<MyHomePage> {
                 Navigator.push(
                     context,
                     MaterialPageRoute(
-                      builder: (context) => const ConfigScreen(),
+                      builder: (context) => ConfigScreen(
+                        onConfig: () {
+                          setState(() {});
+                        },
+                      ),
                     ));
               },
               icon: const Icon(
@@ -54,13 +60,47 @@ class _MyHomePageState extends State<MyHomePage> {
               ))
         ],
       ),
-      body: const Center(
+      body: Center(
         child: Column(
           mainAxisAlignment: MainAxisAlignment.start,
           children: <Widget>[
+            const Gap(20),
             Text(
-              'You have 200 000 left to spend',
+              'Total Budget: ${Data.getTotalBudget()}',
+              style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w600),
             ),
+            Obx(() {
+              print(Data.update.value);
+              return Column(
+                children: List<Widget>.generate(
+                  Data.spendTypes.length,
+                  (index) => Padding(
+                    padding: const EdgeInsets.all(10.0),
+                    child: Container(
+                      padding: const EdgeInsets.all(10),
+                      decoration: BoxDecoration(
+                          borderRadius: BorderRadius.circular(12),
+                          color: context.theme.colorScheme.primaryContainer),
+                      child: Row(
+                        children: [
+                          Expanded(
+                              child: Text(
+                            "${Data.spendTypes[index]}: ",
+                            style: const TextStyle(fontSize: 16),
+                          )),
+                          const Gap(10),
+                          Expanded(
+                              child: Text(
+                            Data.getRemaining(index).toString(),
+                            style: const TextStyle(fontSize: 16),
+                          ))
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+              );
+            })
           ],
         ),
       ),
@@ -68,7 +108,9 @@ class _MyHomePageState extends State<MyHomePage> {
         onPressed: () {
           showModalBottomSheet(
             context: context,
-            builder: (context) => const SpendBottomSheet(),
+            builder: (context) => SpendBottomSheet(
+              onSpent: () {},
+            ),
           );
         },
         tooltip: 'spend',
@@ -79,7 +121,8 @@ class _MyHomePageState extends State<MyHomePage> {
 }
 
 class SpendBottomSheet extends StatefulWidget {
-  const SpendBottomSheet({super.key});
+  const SpendBottomSheet({super.key, required this.onSpent});
+  final void Function() onSpent;
 
   @override
   State<SpendBottomSheet> createState() => _SpendBottomSheetState();
@@ -88,6 +131,8 @@ class SpendBottomSheet extends StatefulWidget {
 class _SpendBottomSheetState extends State<SpendBottomSheet> {
   final spent = Hive.box('spent');
 
+  var type = 0;
+  var amount = 0;
   @override
   Widget build(BuildContext context) {
     return Padding(
@@ -110,6 +155,9 @@ class _SpendBottomSheetState extends State<SpendBottomSheet> {
             ],
           ),
           DropdownMenu(
+              onSelected: (value) {
+                type = value;
+              },
               width: 300,
               initialSelection: 0,
               dropdownMenuEntries: List<DropdownMenuEntry>.generate(
@@ -126,10 +174,18 @@ class _SpendBottomSheetState extends State<SpendBottomSheet> {
               decoration: const InputDecoration(label: Text("Amount Spent")),
               keyboardType: TextInputType.number,
               inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-              onChanged: (value) {},
+              onChanged: (value) {
+                amount = int.tryParse(value) ?? 0;
+              },
             ),
           ),
-          ElevatedButton(onPressed: () {}, child: const Text("SUBMIT"))
+          ElevatedButton(
+              onPressed: () {
+                spent.put(type, amount);
+                Data.update.value++;
+                Get.back();
+              },
+              child: const Text("SUBMIT"))
         ]),
       ),
     );
@@ -137,7 +193,8 @@ class _SpendBottomSheetState extends State<SpendBottomSheet> {
 }
 
 class ConfigScreen extends StatefulWidget {
-  const ConfigScreen({super.key});
+  const ConfigScreen({super.key, required this.onConfig});
+  final void Function() onConfig;
 
   @override
   State<ConfigScreen> createState() => _ConfigScreenState();
@@ -154,57 +211,60 @@ class _ConfigScreenState extends State<ConfigScreen> {
         title: const Text("config"),
       ),
       body: Column(
-        mainAxisSize: MainAxisSize.max,
-        mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-        children: List.generate(
-          Data.spendTypes.length,
-          (index) {
-            int value = 0;
-            return Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 18.0),
-              child: ListView(
-                shrinkWrap: true,
-                children: [
-                  Text(
-                    "${Data.spendTypes[index]} limit",
-                    style: const TextStyle(fontSize: 16),
-                  ),
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    crossAxisAlignment: CrossAxisAlignment.end,
+          mainAxisSize: MainAxisSize.max,
+          mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+          children: [
+            ...List.generate(
+              Data.spendTypes.length,
+              (index) {
+                int value = 0;
+                return Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 18.0),
+                  child: ListView(
+                    shrinkWrap: true,
                     children: [
-                      Expanded(
-                        flex: 4,
-                        child: TextField(
-                          onTapOutside: (event) =>
-                              FocusManager.instance.primaryFocus?.unfocus(),
-                          decoration: InputDecoration(
-                              label: Text(box.get(index).toString())),
-                          keyboardType: TextInputType.number,
-                          inputFormatters: [
-                            FilteringTextInputFormatter.digitsOnly
-                          ],
-                          onChanged: (v) {
-                            value = int.tryParse(v) ?? 0;
-                          },
-                        ),
+                      Text(
+                        "${Data.spendTypes[index]} limit",
+                        style: const TextStyle(fontSize: 16),
                       ),
-                      Expanded(
-                          flex: 3,
-                          child: TextButton(
-                              onPressed: () async {
-                                await box.put(index, value);
-                                setState(() {});
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        crossAxisAlignment: CrossAxisAlignment.end,
+                        children: [
+                          Expanded(
+                            flex: 4,
+                            child: TextField(
+                              onTapOutside: (event) =>
+                                  FocusManager.instance.primaryFocus?.unfocus(),
+                              decoration: InputDecoration(
+                                  label: Text(box.get(index).toString())),
+                              keyboardType: TextInputType.number,
+                              inputFormatters: [
+                                FilteringTextInputFormatter.digitsOnly
+                              ],
+                              onChanged: (v) {
+                                value = int.tryParse(v) ?? 0;
                               },
-                              child: const Text("Confirm")))
+                            ),
+                          ),
+                          Expanded(
+                              flex: 3,
+                              child: TextButton(
+                                  onPressed: () async {
+                                    await box.put(index, value);
+                                    Data.update.value++;
+                                    setState(() {});
+                                  },
+                                  child: const Text("Confirm")))
+                        ],
+                      ),
                     ],
                   ),
-                ],
-              ),
-            );
-          },
-        ),
-      ),
+                );
+              },
+            ),
+            const Text("version 1.0.0")
+          ]),
     );
   }
 }
@@ -217,4 +277,26 @@ class Data {
     "is for me 🙄",
     "other"
   ];
+
+  static int getTotalBudget() {
+    final box = Hive.box('config');
+    List<int> budgets = List<int>.generate(
+      5,
+      (index) => box.get(index, defaultValue: 0),
+    );
+    int total = 0;
+    for (int budget in budgets) {
+      total += budget;
+    }
+    return total;
+  }
+
+  static int getRemaining(int index) {
+    final config = Hive.box('config');
+    final spent = Hive.box('spent');
+    return config.get(index, defaultValue: 0) -
+        spent.get(index, defaultValue: 0);
+  }
+
+  static final update = 0.obs;
 }
